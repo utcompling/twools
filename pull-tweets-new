@@ -1,0 +1,102 @@
+#!/bin/sh
+
+# Usage is
+#   pull-tweets [-n|--dry-run] TWEETAREA DESTDIR [USERNAME]
+#
+# TWEETAREA is an area of the earth containing locations; the bounding
+# box(es) are retrieved from a file TWEETAREA.locations in the same dir
+# as this script.  However, TWEETAREA = spritzer, the spritzer will instead
+# be used to retrieve tweets.
+#
+# DESTDIR is where to save the tweets.
+#
+# USERNAME, if given is the Twitter user name to use when retrieving the
+# Tweets. (Twitter generally rejects more than one request using the same
+# user name at the same time.) If not given, the username is found by looking
+# in 'private.usernames', with lines of the form TWEETAREA:USERNAME.
+#
+# Once the user name is found, the associated password is located by
+# looking in 'private.passwords', with lines of the form USERNAME:PASSWORD.
+# This file should *DEFINITELY* be unreadable except by the owner
+# (chmod 600).
+#
+# If -n or --dry-run is given, the script will output exactly what it
+# would do, but not do anything.
+
+DIR="`dirname $0`"
+
+# Parse options
+DRYRUN=
+while true; do
+  case "$1" in
+    -n | --dry-run ) DRYRUN=yes ; shift ;;
+    * ) break ;
+  esac
+done
+
+find_key() {
+  key=$1
+  file=$2
+  keyname=$3
+  valuename=$4
+  wholeline=$5
+  howmany=`grep "^${key}:" $file | wc -l`
+  if [ "$howmany" -eq 0 ]; then
+    echo "Can't find $valuename for $keyname $key in $file" >&2
+    exit 1
+  fi
+  if [ "$howmany" -gt 1 ]; then
+    echo "Multiple entries for $keyname $key in $file"
+    exit 1
+  fi
+  if [ -n "$wholeline" ]; then
+    grep "^${key}:" $file
+  else
+    grep "^${key}:" $file | sed "s/^[^:]*://"
+  fi
+}
+
+TWEETAREA=$1
+PULLDIR=$2
+if [ -z "$PULLDIR" ]; then
+  echo "Need to specify directory to store tweets in as argument"
+  exit 1
+fi
+USER=$3
+if [ -z "$USER" ]; then
+  USER=`find_key $TWEETAREA private.usernames key area`
+fi
+USERPASS=`find_key $USER private.passwords user password wholeline`
+
+if [ "`uname`" = "Darwin" ]; then
+  # Darwin (BSD) is missing all sorts of stuff, naturally, including %P,
+  # which gets you lowercase am or pm. (%p gets you uppercase AM or PM --
+  # real logical, huh?)
+  DATESUFF="`date '+%F.%H%M%p'`"
+else
+  DATESUFF="`date '+%F.%H%M%P'`"
+fi
+
+PREFIX=$PULLDIR/$TWEETAREA.tweets.$DATESUFF
+
+(
+while true; do
+  echo "Beginning retrieval of tweets for area $TWEETAREA ..."
+  echo -n "Current time is "
+  date
+  if [ "$TWEETAREA" = spritzer ]; then
+    curlcmd="curl --silent --show-error https://stream.twitter.com/1/statuses/sample.json -u$USERPASS"
+  else
+    curlcmd="curl --silent --show-error -d @$DIR/$TWEETAREA.locations https://stream.twitter.com/1/statuses/filter.json -u$USERPASS"
+  fi
+  if [ -n "$DRYRUN" ]; then
+    echo "$curlcmd |bzip2 >> $PREFIX.bzip2"
+  else
+    $curlcmd |bzip2 >> $PREFIX.bzip2
+  fi
+  echo "Ending retrieval of tweets for area $TWEETAREA, trying again after a delay ..."
+  echo -n "Current time is "
+  date
+  sleep 90
+done
+) 2>> $PREFIX.errors
