@@ -3,7 +3,14 @@
 # SETUP:
 #
 # (1) Create any needed Twitter accounts.
-# (2)
+# (2) Create a PRIVATE file 'private.passwords' in this directory, listing
+#     the usernames and passwords of all Twitter accounts you want to use,
+#     in USERNAME:PASSWORD format (i.e. one per line, with a colon separating
+#     username and password).  This file should have permissions 600 or 400.
+# (3) Create a PRIVATE file 'private.usernames' in this directory, listing
+#     the usernames to use for each "tweet area", in TWEETAREA:USERNAME
+#     format (i.e. one per line, with a colon separating the tweet area and
+#     username).
 
 # Usage is
 #   pull-tweets [-n|--dry-run] TWEETAREA DESTDIR [USERNAME]
