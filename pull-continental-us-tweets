@@ -1,5 +1,0 @@
-#!/bin/sh
-
-# You should pass in one extra argument, the directory to store stuff into.
-DIR="`dirname $0`"
-$DIR/pull-tweets continental-us ${1+"$@"}

@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# SETUP:
+#
+# (1) Create any needed Twitter accounts.
+# (2)
+
 # Usage is
 #   pull-tweets [-n|--dry-run] TWEETAREA DESTDIR [USERNAME]
 #
