@@ -1,0 +1,127 @@
+____________
+____________
+
+twitterRelationGraphs.py
+
+This utility is designed to extract the follower or friend graph from a set of users using
+a wrapper to the Twitter API. This utility can extract the graph and the tweets of the followers as
+well. This utility is designed to obey Twitter API rate limits of the REST API. Therefore, it will sleep
+the script once the rate limit is hit each hour.
+
+Andy Luong
+____________
+____________
+
+____________
+I. Requirements
+____________
+
+Python 2.7.1.
+	-There are 3 modules required (Tested Vers):
+		1. httplib2 (0.7.1) 
+		   -http://httplib2.googlecode.com/
+		2. oauth2 (build 170) 
+		   -https://github.com/simplegeo/python-oauth2
+		3. python-twitter (0.8.2 modified READ below) 
+		   -http://code.google.com/p/python-twitter/
+
+Python 2.6.7
+	- Need above and ...
+		4. Argparser (1.2.1) 
+		   -http://argparse.googlecode.com/
+
+Modified 'twitter.py'
+	-This module has been modified for two features
+		1. Status::NewFromJsonDict has been modified to parse down the 'geo' JSON subtree to get coordinates 
+		2. API:GetFollowers has been modified to accept a user parameter, rather just the api's self
+
+____________
+II. Installation & Setup
+____________
+
+1. Install the required modules:
+	- Run these two commands in each of the module directories:
+		% python setup.py build
+		% python setup.py install
+	
+	NOTE: We are using a modified version of python-twitter. Therefore, if you are downloading the
+		  python-twitter module from its source depo, make sure you copy over the modified twitter.py
+		  from this repository or manually modify twitter.py yourself. In order to install the modified version,
+		  the copy must sit in 'build/lib/' of the twitter-python folder.
+
+2. Acquire an Authorization Key:
+	- Register an application at https://dev.twitter.com (Under 'My Applications')
+	- Generate the access tokens
+	- Create a key file (ex: autho-keys.txt ). The file will contain exactly 4 lines:
+		
+		<Consumer key>
+		<Consumer secret>
+		<Access token>
+		<Access token secret>
+		
+		NOTE: Do not add any additional words or characters other than the keys.
+
+3. Acquire a list of users:
+	- Create a users file (ex: mytwitterusers.txt )
+	- The file has one user (ID or SN) on each line
+
+____________
+III. Run the script
+____________
+
+Help:
+% python twitterRelationGraphs.py -h
+	- This will show you all the parameters you may tweak
+
+Only Follower Graph:
+% python twitterRelationGraphs.py -k autho-keys.txt -u mytwitterusers.txt -f followers.graph
+
+Only Friends Graph:
+% python twitterRelationGraphs.py -k autho-keys.txt -u mytwitterusers.txt -f friends.graph
+
+Follower Graph and Follower Tweaks:
+% python twitterRelationGraphs.py -k autho-keys.txt -u mytwitterusers.txt -f followers.graph followers.tweets
+
+Tweets of Users:
+% python twitterRelationGraphs.py -k autho-keys.txt -u mytwitterusers.txt -t users.tweets
+____________
+III. Additional Helper Scripts
+____________
+
+twitterAccuResults.py 
+-This script is only a helper script in case you are processing a large set of users and the main script
+ fails prematurely.
+
+Example:
+% twitterAccuResults.py mytwitterusers.txt followers.graph.complete followers.graph	
+
+What is happening...?
+	1. This script will look at the 'followers.graph' file and find the "last user" that was processed.
+	2. It will then remove all users processed before the "last user", including the last user from
+	   mytwitterusers.txt.
+	3. Then it will append 'followers.graph' to 'followers.graph.complete'; create 'followers.graph.complete'
+	   if it does not exist already.
+	4. Now you can rerun the original script with its old paramets to resume since where the script broke.
+
+NOTE: You are supplying 3 parameters to twitterAccuResults.py. It is a dumb script that does not do
+	  any write protection or safety checks. BE CAREFUL or write your own.
+
+____________
+IV. Other Information
+____________
+
+Logs:
+	-Logs of processed users and unprocessable users are stored in the same base foler as the user input file
+
+Twitter Parameters:
+	-The default parameters that can be viewed using -h are set to help obtain "important" followers. 
+	 Current research has found that users with over 1000 followers tend to be bots, news media, or celebrities
+	 Also, there is a maximum number of 200 tweets that be extracted at one time using the Twitter API.
+
+Twitter API Rate Limits:
+	- https://dev.twitter.com/docs/rate-limiting
+	- Essentially, if you have different IPs, you can make up to 350 API calls an hour.
+
+
+
+
