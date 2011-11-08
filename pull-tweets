@@ -122,16 +122,8 @@ fi
 USERPASS=`find_key $USER $DIR/private.passwords user password wholeline`
 
 datesuff() {
-  if [ "`uname`" = "Darwin" ]; then
-    # Darwin (BSD) is missing all sorts of stuff, naturally, including %P,
-    # which gets you lowercase am or pm. (%p gets you uppercase AM or PM --
-    # real logical, huh?)
-    date '+%F.%H%M%p'
-  else
-    date '+%F.%H%M%P'
-  fi
+  date '+%F.%H%M'
 }
-
 
 compute_prefix() {
   DATESUFF=`datesuff`
