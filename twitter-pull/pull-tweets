@@ -1,0 +1,172 @@
+#!/bin/sh
+
+# SETUP:
+#
+# (1) Create any needed Twitter accounts.
+# (2) Create a PRIVATE file 'private.passwords' in this directory, listing
+#     the usernames and passwords of all Twitter accounts you want to use,
+#     in USERNAME:PASSWORD format (i.e. one per line, with a colon separating
+#     username and password).  This file should have permissions 600 or 400.
+# (3) Create a PRIVATE file 'private.usernames' in this directory, listing
+#     the usernames to use for each "tweet area", in TWEETAREA:USERNAME
+#     format (i.e. one per line, with a colon separating the tweet area and
+#     username).
+
+usage()
+{
+  cat <<FOO
+Usage:
+
+  pull-tweets [-n|--dry-run] [--i TIME|--pull-interval TIME] TWEETAREA DESTDIR [USERNAME]
+
+TWEETAREA is an area of the earth containing locations; the bounding
+box(es) are retrieved from a file 'TWEETAREA.locations' in the same dir
+as this script.  However, if TWEETAREA = spritzer, the spritzer will instead
+be used to retrieve tweets.
+
+DESTDIR is where to save the tweets.
+
+USERNAME, if given, is the Twitter user name to use when retrieving the
+Tweets. (Twitter generally rejects more than one request using the same
+user name at the same time.) If not given, the username is found by looking
+in 'private.usernames', with lines of the form TWEETAREA:USERNAME.
+
+Once the user name is found, the associated password is located by
+looking in 'private.passwords', with lines of the form USERNAME:PASSWORD.
+This file should *DEFINITELY* be unreadable except by the owner
+(chmod 600).
+
+If -n or --dry-run is given, the script will output exactly what it
+would do, but not do anything.
+
+If -i or --pull-interval is given, it specifies the maximum time that
+a single operation of Tweet-pulling will occur.  After that time,
+another operation will begin, but saving to a separate file, named by
+the then-current date and time.  By using this option, you can get files
+containing tweets in more-or-less regularly spaced intervals of time.
+Possible values for TIME are e.g. '30m' (30 minutes), '36h' (36 hours),
+'2d' (2 days), '3w' (3 weeks).  Fractional values are possible.  If the
+unit is unspecified, days are assumed.
+FOO
+  exit 1
+}
+
+if [ -z "$*" ]; then
+  usage
+fi
+
+DIR="`dirname $0`"
+
+# Parse options
+DRYRUN=
+while true; do
+  case "$1" in
+    -n | --dry-run ) DRYRUN=yes ; shift ;;
+    -i | --pull-interval ) PULL_INTERVAL="$2"; shift 2 ;;
+    * ) break ;
+  esac
+done
+
+# Convert time input as given above, with various units, into seconds.
+time_to_sec() {
+  time="$1"
+  case "$time" in
+    *s ) factor='1'          ;;
+    *m ) factor='60'         ;;
+    *h ) factor='60*60'      ;;
+    *d ) factor='60*60*24'   ;;
+    *w ) factor='60*60*24*7' ;;
+    * )  factor='60*60*24'
+         time="${time}d"     ;;
+  esac
+  if ! echo $time | perl -ne 'chop; chop; if ($_ !~ /^[0-9]+(\.[0-9]*)?$/) { exit(1); }'; then
+    echo "Invalid time specification: $time."
+    echo ""
+    usage
+  fi
+  echo $time | perl -ne 'chop; chop; print int($_*'"$factor);"
+}
+
+find_key() {
+  key=$1
+  file=$2
+  keyname=$3
+  valuename=$4
+  wholeline=$5
+  howmany=`grep "^${key}:" $file | wc -l`
+  if [ "$howmany" -eq 0 ]; then
+    echo "Can't find $valuename for $keyname $key in $file" >&2
+    exit 1
+  fi
+  if [ "$howmany" -gt 1 ]; then
+    echo "Multiple entries for $keyname $key in $file"
+    exit 1
+  fi
+  if [ -n "$wholeline" ]; then
+    grep "^${key}:" $file
+  else
+    grep "^${key}:" $file | sed "s/^[^:]*://"
+  fi
+}
+
+TWEETAREA=$1
+PULLDIR=$2
+if [ -z "$PULLDIR" ]; then
+  echo "Need to specify directory to store tweets in as argument"
+  exit 1
+fi
+USER=$3
+if [ -z "$USER" ]; then
+  USER=`find_key $TWEETAREA $DIR/private.usernames key area`
+fi
+USERPASS=`find_key $USER $DIR/private.passwords user password wholeline`
+
+datesuff() {
+  date '+%F.%H%M'
+}
+
+compute_prefix() {
+  DATESUFF=`datesuff`
+  echo $PULLDIR/$TWEETAREA.tweets.$DATESUFF
+}
+
+ORIG_PREFIX=`compute_prefix`
+
+max_time_arg=
+if [ -n "$PULL_INTERVAL" ]; then
+  secs=`time_to_sec $PULL_INTERVAL`
+  max_time_arg="--max-time $secs"
+fi
+CURL_CMD="curl --silent --show-error $max_time_arg"
+
+ERROR_FILE="$ORIG_PREFIX.errors"
+
+while true; do
+  (
+  echo "Logging error output to $ERROR_FILE ..."
+  PREFIX=`compute_prefix`
+  TWEETS_FILE="$PREFIX.bz2"
+  echo "Sending tweets to $TWEETS_FILE"
+  echo "Beginning retrieval of tweets for area $TWEETAREA ..."
+  echo -n "Current time is "
+  date
+  if [ "$TWEETAREA" = spritzer ]; then
+    cmdline_nopass="$CURL_CMD https://stream.twitter.com/1/statuses/sample.json"
+  else
+    cmdline_nopass="$CURL_CMD -d @$DIR/$TWEETAREA.locations https://stream.twitter.com/1/statuses/filter.json"
+  fi
+  cmdline="$cmdline_nopass -u$USERPASS"
+  # Censor the username and password so they don't end up in log files, etc.
+  cmdline_censored="$cmdline_nopass -u<censored>"
+  if [ -n "$DRYRUN" ]; then
+    echo "$cmdline |bzip2 >> $TWEETS_FILE"
+  else
+    echo "$cmdline_censored |bzip2 >> $TWEETS_FILE"
+    $cmdline |bzip2 >> $TWEETS_FILE
+  fi
+  echo "Ending retrieval of tweets for area $TWEETAREA, trying again after a delay ..."
+  echo -n "Current time is "
+  date
+  sleep 90
+  ) | tee --append $ERROR_FILE 2>&1
+done

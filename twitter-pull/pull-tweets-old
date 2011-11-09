@@ -1,0 +1,28 @@
+#!/bin/sh
+
+DIR="`dirname $0`"
+
+TWEETAREA=$1
+ACCOUNT="`cat $DIR/$TWEETAREA.userpass`"
+PULLDIR=$2
+if [ -z "$PULLDIR" ]; then
+  echo "Need to specify directory to store tweets in as argument"
+  exit 1
+fi
+PREFIX=$PULLDIR/$TWEETAREA.tweets
+(
+while true; do
+  echo "Beginning retrieval of tweets for area $TWEETAREA ..."
+  echo -n "Current time is "
+  date
+  if [ "$TWEETAREA" = spritzer ]; then
+    curl --silent --show-error https://stream.twitter.com/1/statuses/sample.json -u$ACCOUNT |bzip2 >> $PREFIX.bzip2
+  else
+    curl --silent --show-error -d @$DIR/$TWEETAREA.locations https://stream.twitter.com/1/statuses/filter.json -u$ACCOUNT |bzip2 >> $PREFIX.bzip2
+  fi
+  echo "Ending retrieval of tweets for area $TWEETAREA, trying again after a delay ..."
+  echo -n "Current time is "
+  date
+  sleep 90
+done
+) 2>> $PREFIX.errors
