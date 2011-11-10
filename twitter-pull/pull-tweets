@@ -141,15 +141,25 @@ CURL_CMD="curl --silent --show-error $max_time_arg"
 
 ERROR_FILE="$ORIG_PREFIX.errors"
 
+# Minimum successful run time, in seconds
+MINIMUM_SUCCESSFUL_RUN_TIME=3600
+# Minimum amount to delay after an error, in seconds; we implement an
+# exponential back-off algorithm, doubling the delay each time until
+# we run at last MINIMUM_SUCCESSFUL_RUN_TIME.
+MINIMUM_DELAY_AFTER_ERROR=1
+# Most recent delay, in seconds, after error
+last_delay=$MINIMUM_DELAY_AFTER_ERROR
+# Last start time, in seconds since Epoch
+last_start_time=
+
+{
 while true; do
-  (
   echo "Logging error output to $ERROR_FILE ..."
   PREFIX=`compute_prefix`
   TWEETS_FILE="$PREFIX.bz2"
   echo "Sending tweets to $TWEETS_FILE"
-  echo "Beginning retrieval of tweets for area $TWEETAREA ..."
-  echo -n "Current time is "
-  date
+  echo "Beginning retrieval of tweets for area $TWEETAREA at `date` ..."
+  last_start_time=`date +%s`
   if [ "$TWEETAREA" = spritzer ]; then
     cmdline_nopass="$CURL_CMD https://stream.twitter.com/1/statuses/sample.json"
   else
@@ -164,9 +174,18 @@ while true; do
     echo "$cmdline_censored |bzip2 >> $TWEETS_FILE"
     $cmdline |bzip2 >> $TWEETS_FILE
   fi
-  echo "Ending retrieval of tweets for area $TWEETAREA, trying again after a delay ..."
-  echo -n "Current time is "
-  date
-  sleep 90
-  ) | tee --append $ERROR_FILE 2>&1
+  echo "Ending retrieval of tweets for area $TWEETAREA at `date` ..."
+  last_end_time=`date +%s`
+  run_length=`expr $last_end_time - $last_start_time`
+  if [ $run_length -lt $MINIMUM_SUCCESSFUL_RUN_TIME ]; then
+    echo "Unsuccessful run: $run_length seconds < $MINIMUM_SUCCESSFUL_RUN_TIME seconds"
+    last_delay=`expr $last_delay '*' 2`
+    echo "Doubling delay to $last_delay seconds"
+  else
+    echo "Successful run at $run_length seconds, resetting delay to $MINIMUM_DELAY_AFTER_ERROR second(s)"
+    last_delay=1
+  fi
+  sleep $last_delay 
+  echo "Trying again after having delayed $last_delay seconds ..."
 done
+} | tee --append $ERROR_FILE 2>&1
