@@ -203,7 +203,7 @@ def outputUserTweets(userID):
         tweet_s = (idString + "\t" +
                    str(tweet.GetCreatedAtInSeconds()) + "\t" +
                    geo + "\t" +
-                   tweet.GetText().lower())
+                   tweet.GetText().lower().replace("\r","").replace("\n",""))
 
         outUserTweets.write(tweet_s + "\n")
 
@@ -237,7 +237,7 @@ def outputGraphsAndTweets(user, fGraph, outGraph, outTweet):
                 tweet_s = (otherID + "\t" +
                            str(tweet.GetCreatedAtInSeconds()) + "\t" +
                            geo + "\t" +
-                           tweet.GetText().lower())
+                           tweet.GetText().lower().replace("\r","").replace("\n",""))
 
                 outTweet.write(tweet_s + "\n")
 
