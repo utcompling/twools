@@ -96,6 +96,7 @@ def authenticate(ck, cs, atk, ats):
         return False
 
     else:
+	api.SetCache(None)
         print "You have been successfully authenticated."
         return True
 
@@ -394,6 +395,8 @@ def processUsers(users_file):
 
         if not user in processedUsers and not len(user) == 0:
             checkApiLimit()
+            #Delay between calls
+            time.sleep(apiCallDelaySeconds)
             processUser(user)
 
     fin.close()
