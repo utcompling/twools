@@ -1,4 +1,4 @@
-package fogbow.textgrounder;
+package twools;
 
 import java.io.IOException;
 
@@ -7,7 +7,6 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
@@ -36,9 +35,7 @@ import org.apache.log4j.Logger;
  */
 public class PreprocessTweetsJSON extends Configured implements Tool {
 	private static final Logger sLogger = Logger
-			.getLogger(GetTwitterUsers.class);
-
-	// static int count = 0;
+			.getLogger(PreprocessTweetsJSON.class);
 
 	private static class PreprocessTweetsJSONMapper extends
 			Mapper<LongWritable, Text, Text, Text> {
@@ -46,40 +43,57 @@ public class PreprocessTweetsJSON extends Configured implements Tool {
 		Text user = new Text();
 		Text data = new Text();
 
+		private static boolean twokenizeFlag;
+		private static float diagSize;
+
+		@Override
+		public void setup(Context context) {
+			twokenizeFlag = context.getConfiguration().getBoolean("twokenize",
+					false);
+			diagSize = context.getConfiguration().getFloat("diagSize",
+					(float) 0.5);
+		}
+
 		@Override
 		public void map(LongWritable key, Text value, Context context)
 				throws IOException, InterruptedException {
 
 			try {
-				Status status = Status.fromJson(value.toString());
+				Status status = Status.fromJson(value.toString(), diagSize);
 				if (status.hasGeo()) {
-					user.set(status.getId());
-					data.set(status.getUserId() + "\t" + status.getCreatedAt()
-							+ "\t" + status.getCoord() + "\t" + status.getLat()
-							+ "\t" + status.getLon() + "\t" + status.getText());
+
+					String text = status.getText();
+
+					if (twokenizeFlag) {
+						text = Twokenize.tokenize(status.getText()).mkString(
+								" ");
+
+					}
+
+					user.set(status.getUserId());
+					data.set(status.getCreatedAt() + "\t" + status.getCoord()
+							+ "\t" + text + "\t" + status.getUserMentions());
 
 					context.write(user, data);
 				}
 
 			} catch (Exception e) {
-				System.err.println("Bad JSON?");
+				System.err
+						.println("Bad JSON Input. Exception: " + e.toString());
 				System.err.println(value.toString());
 			}
-
-			/*
-			 * count++; if (count % 100000 == 0) System.out.println(count);
-			 */
 		}
 	}
 
+	// Reducer will
 	private static class PreprocessTweetsJSONReducer extends
-			Reducer<Text, Text, Text, NullWritable> {
+			Reducer<Text, Text, Text, Text> {
 		@Override
 		public void reduce(Text key, Iterable<Text> values, Context context)
 				throws IOException, InterruptedException {
 
 			for (Text val : values)
-				context.write(val, NullWritable.get());
+				context.write(key, val);
 		}
 	}
 
@@ -90,7 +104,8 @@ public class PreprocessTweetsJSON extends Configured implements Tool {
 	}
 
 	private static int printUsage() {
-		System.out.println("usage: [input-path] [output-path] [num-reducers]");
+		System.out
+				.println("usage: [input-path] [output-path] [twokenize text (true or false)] [Bounding-box diagonal length] [num-reducers]");
 		ToolRunner.printGenericCommandUsage(System.out);
 		return -1;
 	}
@@ -98,22 +113,23 @@ public class PreprocessTweetsJSON extends Configured implements Tool {
 	/**
 	 * Runs this tool.
 	 */
+	@Override
 	public int run(String[] args) throws Exception {
-		if (args.length != 3) {
+		if (args.length != 5) {
 			printUsage();
 			return -1;
 		}
 
 		String inputPath = args[0];
 		String outputPath = args[1];
-		int reduceTasks = Integer.parseInt(args[2]);
-
-		sLogger.info("Tool: PreprocessTweetsJSON");
-		sLogger.info(" - input path: " + inputPath);
-		sLogger.info(" - output path: " + outputPath);
-		sLogger.info(" - number of reducers: " + reduceTasks);
+		String twokenizeFlag = args[2];
+		float diagSize = Float.parseFloat(args[3]);
+		int reduceTasks = Integer.parseInt(args[4]);
 
 		Configuration conf = new Configuration();
+		conf.setBoolean("twokenize", Boolean.valueOf(twokenizeFlag));
+		conf.setFloat("diagSize", diagSize);
+
 		Job job = new Job(conf, "PreprocessTweetsJSON");
 		job.setJarByClass(PreprocessTweetsJSON.class);
 
@@ -123,8 +139,7 @@ public class PreprocessTweetsJSON extends Configured implements Tool {
 		FileOutputFormat.setOutputPath(job, new Path(outputPath));
 
 		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(NullWritable.class);
-		job.setMapOutputValueClass(Text.class);
+		job.setOutputValueClass(Text.class);
 
 		job.setMapperClass(PreprocessTweetsJSONMapper.class);
 		job.setReducerClass(PreprocessTweetsJSONReducer.class);
@@ -132,6 +147,12 @@ public class PreprocessTweetsJSON extends Configured implements Tool {
 		// Delete the output directory if it exists already
 		Path outputDir = new Path(outputPath);
 		FileSystem.get(conf).delete(outputDir, true);
+
+		sLogger.info("Tool: PreprocessTweetsJSON");
+		sLogger.info(" - input path: " + inputPath);
+		sLogger.info(" - output path: " + outputPath);
+		sLogger.info(" - twokenize: " + twokenizeFlag);
+		sLogger.info(" - number of reducers: " + reduceTasks);
 
 		long startTime = System.currentTimeMillis();
 		job.waitForCompletion(true);
