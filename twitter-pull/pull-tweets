@@ -188,4 +188,4 @@ while true; do
   sleep $last_delay 
   echo "Trying again after having delayed $last_delay seconds ..."
 done
-} | tee --append $ERROR_FILE 2>&1
+} | tee -a $ERROR_FILE 2>&1
