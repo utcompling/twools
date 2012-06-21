@@ -17,12 +17,19 @@ usage()
   cat <<FOO
 Usage:
 
-  pull-tweets [-n|--dry-run] [--i TIME|--pull-interval TIME] TWEETAREA DESTDIR [USERNAME]
+  pull-tweets [-n|--dry-run] [--i TIME|--pull-interval TIME] [--spritzer] [--area TWEETAREA] [--track TRACKEXPR] DESTDIR [USERNAME]
 
-TWEETAREA is an area of the earth containing locations; the bounding
-box(es) are retrieved from a file 'TWEETAREA.locations' in the same dir
-as this script.  However, if TWEETAREA = spritzer, the spritzer will instead
-be used to retrieve tweets.
+If --area is given, tweets are restricted by location.  TWEETAREA is an area
+of the earth containing locations; the bounding box(es) are retrieved from a
+file 'TWEETAREA.locations' in the same dir as this script.
+
+If --spritzer is given, the spritzer will be used to retrieve tweets.
+
+If --track is given, tweets are filtered by the presence of phrases in the
+stream.  The format is one or more "phrases" separated by commas, where each
+"phrase" is one or more words separated by spaces.  A tweet will be returned
+if any phrase matches; a phrase matches if all words are in the tweet,
+regardless of order and ignoring case.
 
 DESTDIR is where to save the tweets.
 
@@ -57,12 +64,21 @@ fi
 
 DIR="`dirname $0`"
 
+STREAM='filter.json'
+
+CMDOPTS=
+
 # Parse options
 DRYRUN=
 while true; do
   case "$1" in
     -n | --dry-run ) DRYRUN=yes ; shift ;;
     -i | --pull-interval ) PULL_INTERVAL="$2"; shift 2 ;;
+    --spritzer ) STREAM='sample.json'; shift ;;
+    --area ) CMDOPTS="$CMDOPTS -d @$DIR/$2.locations"; shift 2 ;;
+    # FIXME! Handle spaces.  Need to save to file or stdin.  But may also
+    # need to URL-encode.
+    --track ) CMDOPTS="$CMDOPTS -d track=$2"; shift 2 ;;
     * ) break ;
   esac
 done
@@ -160,11 +176,7 @@ while true; do
   echo "Sending tweets to $TWEETS_FILE"
   echo "Beginning retrieval of tweets for area $TWEETAREA at `date` ..."
   last_start_time=`date +%s`
-  if [ "$TWEETAREA" = spritzer ]; then
-    cmdline_nopass="$CURL_CMD https://stream.twitter.com/1/statuses/sample.json"
-  else
-    cmdline_nopass="$CURL_CMD -d @$DIR/$TWEETAREA.locations https://stream.twitter.com/1/statuses/filter.json"
-  fi
+  cmdline_nopass="$CURL_CMD $CMDOPTS https://stream.twitter.com/1/statuses/$STREAM"
   cmdline="$cmdline_nopass -u$USERPASS"
   # Censor the username and password so they don't end up in log files, etc.
   cmdline_censored="$cmdline_nopass -u<censored>"
