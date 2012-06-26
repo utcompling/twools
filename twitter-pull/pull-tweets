@@ -1,4 +1,7 @@
-#!/bin/sh
+#!/usr/bin/env bash
+
+# We need to use bash so that we can use bash's array features to properly
+# handle spaces inside of arguments.
 
 # SETUP:
 #
@@ -66,7 +69,16 @@ DIR="`dirname $0`"
 
 STREAM='filter.json'
 
-CMDOPTS=
+# This sets CMDOPTS to an empty array.  Capsule summary of bash arrays:
+# 1. foo=(x y z) sets $foo to be an array of items.
+# 2. "${foo[@]}" (quotes necessary) expands to the whole set of items in $foo,
+#    with as many words as there are items in foo, with spaces embedded
+#    in words handled properly.  No other way handles spaces properly (e.g.
+#    leaving the quotes out or using * in place of @).
+# 3. foo=("${foo[@]}" q r) adds q and r to $foo while properly preserving
+#    previous elements, including spaces (quotes necessary).
+# 4. Just plain $foo expands only to the first element, NOT all of them.
+CMDOPTS=()
 
 # Parse options
 DRYRUN=
@@ -75,10 +87,8 @@ while true; do
     -n | --dry-run ) DRYRUN=yes ; shift ;;
     -i | --pull-interval ) PULL_INTERVAL="$2"; shift 2 ;;
     --spritzer ) STREAM='sample.json'; shift ;;
-    --area ) CMDOPTS="$CMDOPTS -d @$DIR/$2.locations"; shift 2 ;;
-    # FIXME! Handle spaces.  Need to save to file or stdin.  But may also
-    # need to URL-encode.
-    --track ) CMDOPTS="$CMDOPTS -d track=$2"; shift 2 ;;
+    --area ) CMDOPTS=("${CMDOPTS[@]}" -d "@$DIR/$2.locations"); shift 2 ;;
+    --track ) CMDOPTS=("${CMDOPTS[@]}" -d "track=$2"); shift 2 ;;
     * ) break ;
   esac
 done
@@ -176,15 +186,18 @@ while true; do
   echo "Sending tweets to $TWEETS_FILE"
   echo "Beginning retrieval of tweets for area $TWEETAREA at `date` ..."
   last_start_time=`date +%s`
-  cmdline_nopass="$CURL_CMD $CMDOPTS https://stream.twitter.com/1/statuses/$STREAM"
-  cmdline="$cmdline_nopass -u$USERPASS"
+  cmdline_nopass=($CURL_CMD "${CMDOPTS[@]}" "https://stream.twitter.com/1/statuses/$STREAM")
+  cmdline=("${cmdline_nopass[@]}" "-u$USERPASS")
   # Censor the username and password so they don't end up in log files, etc.
-  cmdline_censored="$cmdline_nopass -u<censored>"
+  cmdline_censored=("${cmdline_nopass[@]}" "-u<censored>")
   if [ -n "$DRYRUN" ]; then
-    echo "$cmdline |bzip2 >> $TWEETS_FILE"
+    echo "${cmdline[@]} |bzip2 >> $TWEETS_FILE"
+    for x in "${cmdline[@]}"; do
+      echo "Argument: $x"
+    done
   else
-    echo "$cmdline_censored |bzip2 >> $TWEETS_FILE"
-    $cmdline |bzip2 >> $TWEETS_FILE
+    echo "${cmdline_censored[@]} |bzip2 >> $TWEETS_FILE"
+    "${cmdline[@]}" |bzip2 >> $TWEETS_FILE
   fi
   echo "Ending retrieval of tweets for area $TWEETAREA at `date` ..."
   last_end_time=`date +%s`
