@@ -9,45 +9,105 @@
 # (2) Create a PRIVATE file 'private.passwords' in this directory, listing
 #     the usernames and passwords of all Twitter accounts you want to use,
 #     in USERNAME:PASSWORD format (i.e. one per line, with a colon separating
-#     username and password).  This file should have permissions 600 or 400.
+#     user name and password).  This file should have permissions 600 or 400.
 # (3) Create a PRIVATE file 'private.usernames' in this directory, listing
-#     the usernames to use for each "tweet area", in TWEETAREA:USERNAME
-#     format (i.e. one per line, with a colon separating the tweet area and
-#     username).
+#     the usernames to use for each "tweet area", in USERID:TWEETAREA:USERNAME
+#     format (i.e. one per line, with colons separating the user ID, tweet area
+#     and username, where the user ID is an arbitrary number).
 
 usage()
 {
-  cat <<FOO
+  cat <<'FOO'
 Usage:
 
-  pull-tweets [-n|--dry-run] [--i TIME|--pull-interval TIME] [--spritzer] [--area TWEETAREA] [--track TRACKEXPR] DESTDIR [USERNAME]
+  pull-tweets [-n|--dry-run] [-u ID|--user ID] [--i TIME|--pull-interval TIME] [--spritzer] [--name NAME] [--area TWEETAREA] [--track TRACKEXPR] [--no-bzip] DESTDIR
 
-If --area is given, tweets are restricted by location.  TWEETAREA is an area
-of the earth containing locations; the bounding box(es) are retrieved from a
-file 'TWEETAREA.locations' in the same dir as this script.
+This program streams tweets from Twitter using the Streaming API
+(https://dev.twitter.com/docs/streaming-apis).  It runs non-stop until
+terminated, saving the tweets into a file in DESTDIR, normally bzipped
+(although that can be overridden using --no-bzip).  The name of the file
+includes a timestamp as well as an identifying "name" that is usually
+taken from the --name or --area parameters; see below.  The program will
+stream tweets for only a set period of time (determined by --pull-interval,
+normally one day) before starting a new file, to make it easier to locate
+tweets by time and to avoid creating overly large files.
 
-If --spritzer is given, the spritzer will be used to retrieve tweets.
+If an error happens, this program automatically restarts, using exponential
+backoff.  This type of backoff is mandated by Twitter, and in fact a program
+that does not use it will get locked out until it does start using it.
 
-If --track is given, tweets are filtered by the presence of phrases in the
-stream.  The format is one or more "phrases" separated by commas, where each
-"phrase" is one or more words separated by spaces.  A tweet will be returned
-if any phrase matches; a phrase matches if all words are in the tweet,
-regardless of order and ignoring case.
+Streaming from Twitter must be done in the context of a particular Twitter
+user.  The user name is usually specified using --user, which specifies an
+ID that is mapped to an actual user name and password using local files,
+which should definitely be unreadable except by the owner (chmod 600 or
+chmod 400).  (An ID is used for privacy, to avoid having the actual user name
+appear in the command line, which may be visible to other users on the
+system.) An alternative mechanism for locating the user exists using the
+value of --area, although this may be removed at some point.  If no
+user name can be located, the program will refuse to run.  See below for more
+discussion of users.
 
-DESTDIR is where to save the tweets.
+In addition, some sort of other restriction on tweets must be given, either
+using --spritzer, --area or --track. (This is mandated by Twitter.)
 
-USERNAME, if given, is the Twitter user name to use when retrieving the
-Tweets. (Twitter generally rejects more than one request using the same
-user name at the same time.) If not given, the username is found by looking
-in 'private.usernames', with lines of the form TWEETAREA:USERNAME.
+
+More details:
+
+If -u or --user is given, it specifies a numeric ID of a Twitter user to be
+used. (User ID's are arbitrary numbers, used for privacy, so other users on
+the system don't ever see the actual user names in command-line strings.)
+You must use a Twitter user when requesting data from the streaming API,
+and only one stream at a time can use a given user.  If no user is given,
+it will be taken from TWEETAREA, from pseudo-area "spritzer", or from any
+name given using --name.  Note that the same area or name is used as the
+prefix of the output files.  The mapping from user and tweet areas to stored
+in the file 'private.usernames', with lines of the form
+USERID:TWEETAREA:USERNAME.  This file should be unreadable except by the owner
+(chmod 600).
 
 Once the user name is found, the associated password is located by
 looking in 'private.passwords', with lines of the form USERNAME:PASSWORD.
 This file should *DEFINITELY* be unreadable except by the owner
 (chmod 600).
 
+If --spritzer is given, the spritzer will be used to retrieve tweets
+(sample.json); otherwise the normal filter mechanism will be used
+(filter.json).
+
+If --area is given, tweets are restricted by location.  TWEETAREA is an area
+of the earth containing locations; the bounding box(es) are retrieved from a
+file 'TWEETAREA.locations' in the same dir as this script.
+
+If --track is given, tweets are filtered by the presence of words in the
+stream.  The format is one or more "phrases" separated by commas, where each
+"phrase" is one or more words separated by spaces.  A tweet will be returned
+if any phrase matches; a phrase matches if all words are in the tweet,
+regardless of order and ignoring case. NOTE: If you want to include
+multiple space-separated words in a phrase, you *must* URL-encode the spaces
+as %20.  In fact, in general you should URL-encode punctuation, although
+at least for the symbols # and @ (commonly occurring in tweets as hashtags
+and reply-tos, respectively), it appears to work currently whether or not
+you URL-encode them or leave them as-is.  Conversions for common symbols:
+
+@	%40
+#	%23
+!	%21
+$	%24
+%	%25
+(	%28
+)	%29
+/	%2F
+=	%3D
+?	%3F
+
 If -n or --dry-run is given, the script will output exactly what it
-would do, but not do anything.
+would do, but not do anything. (NOTE NOTE NOTE: When doing a dry run, the
+output will include the exact command run by 'curl' for diagnostic purposes,
+including the user name and password.  In other circumstances, the user
+name and password will be censored so that they don't appear in log files
+made of the operation of this script.)
+
+If --no-bzip is given, don't compress output using bzip2.
 
 If -i or --pull-interval is given, it specifies the maximum time that
 a single operation of Tweet-pulling will occur.  After that time,
@@ -57,6 +117,8 @@ containing tweets in more-or-less regularly spaced intervals of time.
 Possible values for TIME are e.g. '30m' (30 minutes), '36h' (36 hours),
 '2d' (2 days), '3w' (3 weeks).  Fractional values are possible.  If the
 unit is unspecified, days are assumed.
+
+DESTDIR is where to save the tweets.
 FOO
   exit 1
 }
@@ -82,13 +144,22 @@ CMDOPTS=()
 
 # Parse options
 DRYRUN=
+TWEETAREA=
+USERID=
+NAME=
+BZIP=bzip2
+
 while true; do
   case "$1" in
     -n | --dry-run ) DRYRUN=yes ; shift ;;
     -i | --pull-interval ) PULL_INTERVAL="$2"; shift 2 ;;
     --spritzer ) STREAM='sample.json'; shift ;;
-    --area ) CMDOPTS=("${CMDOPTS[@]}" -d "@$DIR/$2.locations"); shift 2 ;;
+    --area ) TWEETAREA="$2"; CMDOPTS=("${CMDOPTS[@]}" -d "@$DIR/$2.locations"); shift 2 ;;
+    --name ) NAME="$2"; shift 2 ;;
+    -u | --user ) USERID="$2"; shift 2 ;;
     --track ) CMDOPTS=("${CMDOPTS[@]}" -d "track=$2"); shift 2 ;;
+    --no-bzip ) BZIP="cat"; shift ;;
+    -* ) usage ;;
     * ) break ;
   esac
 done
@@ -113,39 +184,72 @@ time_to_sec() {
   echo $time | perl -ne 'chop; chop; print int($_*'"$factor);"
 }
 
-find_key() {
+find_field() {
+  regexp="$1"
+  shift
   key=$1
   file=$2
   keyname=$3
   valuename=$4
   wholeline=$5
-  howmany=`grep "^${key}:" $file | wc -l`
+  regexp="${regexp}${key}:"
+  howmany=`grep "$regexp" $file | wc -l`
   if [ "$howmany" -eq 0 ]; then
     echo "Can't find $valuename for $keyname $key in $file" >&2
     exit 1
   fi
   if [ "$howmany" -gt 1 ]; then
-    echo "Multiple entries for $keyname $key in $file"
+    echo "Multiple entries for $keyname $key in $file" >&2
     exit 1
   fi
   if [ -n "$wholeline" ]; then
-    grep "^${key}:" $file
+    grep "$regexp" $file
   else
-    grep "^${key}:" $file | sed "s/^[^:]*://"
+    grep "$regexp" $file | sed "s/^.*://"
   fi
 }
 
-TWEETAREA=$1
-PULLDIR=$2
+find_first() {
+  find_field "^" ${1+"$@"}
+}
+
+find_second() {
+  find_field "^[^.]*:" ${1+"$@"}
+}
+
+# Make sure that errors even in calls to `...` cause things to stop,
+# while processing command-line arguments.
+set -e
+
+if [ -n "$NAME" ]; then
+  :
+elif [ -n "$TWEETAREA" ]; then
+  NAME="$TWEETAREA"
+elif [ "$STREAM" = "sample.json" ]; then
+  NAME="spritzer"
+else
+  NAME="stream"
+fi
+
+PULLDIR=$1
 if [ -z "$PULLDIR" ]; then
-  echo "Need to specify directory to store tweets in as argument"
+  echo "Need to specify directory to store tweets in as argument" >&2
   exit 1
 fi
-USER=$3
-if [ -z "$USER" ]; then
-  USER=`find_key $TWEETAREA $DIR/private.usernames key area`
+UNAME=
+if [ -n "$USERID" ]; then
+  UNAME=`find_first $USERID $DIR/private.usernames key area`
+elif [ -n "$NAME" ]; then
+  UNAME=`find_second $NAME $DIR/private.usernames key area`
 fi
-USERPASS=`find_key $USER $DIR/private.passwords user password wholeline`
+if [ -z "$UNAME" ]; then
+  echo "Can't find user name" >&2
+  exit 1
+fi
+USERPASS=`find_first $UNAME $DIR/private.passwords user password wholeline`
+
+# Go back to normal error-handling, since curl itself may exit 1.
+set +e
 
 datesuff() {
   date '+%F.%H%M'
@@ -153,7 +257,7 @@ datesuff() {
 
 compute_prefix() {
   DATESUFF=`datesuff`
-  echo $PULLDIR/$TWEETAREA.tweets.$DATESUFF
+  echo $PULLDIR/$NAME.tweets.$DATESUFF
 }
 
 ORIG_PREFIX=`compute_prefix`
@@ -182,24 +286,27 @@ last_start_time=
 while true; do
   echo "Logging error output to $ERROR_FILE ..."
   PREFIX=`compute_prefix`
-  TWEETS_FILE="$PREFIX.bz2"
+  if [ "$BZIP" = "cat" ]; then
+    TWEETS_FILE="$PREFIX"
+  else
+    TWEETS_FILE="$PREFIX.bz2"
+  fi
   echo "Sending tweets to $TWEETS_FILE"
-  echo "Beginning retrieval of tweets for area $TWEETAREA at `date` ..."
+  echo "Beginning retrieval of tweets for area $NAME at `date` ..."
   last_start_time=`date +%s`
   cmdline_nopass=($CURL_CMD "${CMDOPTS[@]}" "https://stream.twitter.com/1/statuses/$STREAM")
   cmdline=("${cmdline_nopass[@]}" "-u$USERPASS")
   # Censor the username and password so they don't end up in log files, etc.
   cmdline_censored=("${cmdline_nopass[@]}" "-u<censored>")
   if [ -n "$DRYRUN" ]; then
-    echo "${cmdline[@]} |bzip2 >> $TWEETS_FILE"
-    for x in "${cmdline[@]}"; do
-      echo "Argument: $x"
-    done
+    echo "${cmdline[@]} |$BZIP >> $TWEETS_FILE"
+    #To test that spaces are being properly passed in
+    #for x in "${cmdline[@]}"; do echo "Argument: $x"; done
   else
-    echo "${cmdline_censored[@]} |bzip2 >> $TWEETS_FILE"
-    "${cmdline[@]}" |bzip2 >> $TWEETS_FILE
+    echo "${cmdline_censored[@]} |$BZIP >> $TWEETS_FILE"
+    "${cmdline[@]}" |$BZIP >> $TWEETS_FILE
   fi
-  echo "Ending retrieval of tweets for area $TWEETAREA at `date` ..."
+  echo "Ending retrieval of tweets for area $NAME at `date` ..."
   last_end_time=`date +%s`
   run_length=`expr $last_end_time - $last_start_time`
   if [ $run_length -lt $MINIMUM_SUCCESSFUL_RUN_TIME ]; then
