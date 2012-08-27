@@ -1,0 +1,80 @@
+#!/bin/sh
+
+# Finish creating extra symlink directories and setting permissions properly
+# after changes in the original files (e.g. adding new ones).
+
+cordir=$SCRATCH/corpora/twitter-pull
+origsrel=originals
+
+machsources="longhorn markov"
+machs="$machsources all"
+types="geotagged spritzer all"
+
+cd $cordir
+
+# Remove old symlink dirs, but make sure no data files in them
+for mach in $machs; do
+  for type in $types; do
+    dir="$mach-$type"
+    if [ -e $dir ]; then
+      if [ -n "`ls $dir`" ]; then
+        for file in $dir/*; do
+          if [ ! -L "$file" ]; then
+            echo "Non-symlink $file found in directory to be removed!  Can't proceed."
+            exit 1
+          fi
+        done
+      fi
+
+      echo "Directory $dir has no data files, removing ..."
+      rm -rf $dir
+    else
+      echo "Directory $dir doesn't currently exist."
+    fi
+  done
+done
+
+# Create symlinks
+for mach in $machs; do
+  for type in $types; do
+
+    case $mach in
+      longhorn ) srcdirs="longhorn" ;;
+      markov ) srcdirs="markov" ;;
+      all ) srcdirs="longhorn markov" ;;
+      * ) echo "Unrecognized download machine '$mach'"; exit 1 ;;
+    esac
+
+    case $type in
+      geotagged ) prefixes="global" ;;
+      spritzer ) prefixes="spritzer" ;;
+      all ) prefixes="global spritzer" ;;
+      * ) echo "Unrecognized Twitter source '$type'"; exit 1 ;;
+    esac
+
+    echo "Creating directory $dir of symlinks ..."
+    dir="$mach-$type"
+    mkdir $dir
+
+    cd $dir
+    for srcdir in $srcdirs; do
+      for prefix in $prefixes; do
+        for file in ../$origsrel/$srcdir/$prefix*.bz2; do
+          base=`basename $file`
+          ln -s $file $srcdir-$base
+        done
+      done
+    done
+    cd $cordir
+  done
+done
+
+# Set permissions
+echo "Setting permissions ..."
+chmod -R go+rX,go-w $cordir
+for src in $machsources; do
+  chmod -R a-w $cordir/$origsrel/$src/*
+done
+
+# All done.
+echo "Done."

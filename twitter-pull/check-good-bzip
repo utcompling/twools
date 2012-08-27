@@ -1,0 +1,7 @@
+#!/bin/sh
+
+for x in ${1+"$@"}; do
+  echo "Checking $x at `date` ..."
+  bzcat $x > /dev/null
+done
+echo "Checking is done."

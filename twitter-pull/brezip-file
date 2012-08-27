@@ -1,0 +1,12 @@
+#!/bin/sh
+
+for x in ${1+"$@"}; do
+  base=`basename $x .bz2`
+  echo "Unzipping $x ..."
+  bunzip2 < $x > $base
+  mv $x $x.orig
+  echo "Rezipping $x ..."
+  bzip2 $base
+  touch -r $x.orig $base.bz2
+  echo "Done."
+done
