@@ -12,25 +12,31 @@ types="geotagged spritzer all"
 
 cd $cordir
 
+function cleandir() {
+  dir="$1"
+  if [ -e $dir ]; then
+    if [ -n "`ls $dir`" ]; then
+      for file in $dir/*; do
+        if [ ! -L "$file" ]; then
+          echo "Non-symlink $file found in directory to be removed!  Can't proceed."
+          exit 1
+        fi
+      done
+    fi
+
+    echo "Directory $dir has no data files, removing ..."
+    rm -rf $dir
+  else
+    echo "Directory $dir doesn't currently exist."
+  fi
+  return 0
+}
+
 # Remove old symlink dirs, but make sure no data files in them
 for mach in $machs; do
   for type in $types; do
     dir="$mach-$type"
-    if [ -e $dir ]; then
-      if [ -n "`ls $dir`" ]; then
-        for file in $dir/*; do
-          if [ ! -L "$file" ]; then
-            echo "Non-symlink $file found in directory to be removed!  Can't proceed."
-            exit 1
-          fi
-        done
-      fi
-
-      echo "Directory $dir has no data files, removing ..."
-      rm -rf $dir
-    else
-      echo "Directory $dir doesn't currently exist."
-    fi
+    cleandir "$dir"
   done
 done
 
