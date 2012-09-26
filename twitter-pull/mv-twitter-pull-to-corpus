@@ -1,0 +1,87 @@
+#!/bin/sh
+
+usage() {
+  cat <<HERE
+Usage: $0 [-n | --dry-run] [--no-symlinks] [NETWORK]
+
+Move recently downloaded tweets into their permanent-storage location, and
+set various symlinks and such correctly so that different slices of the tweets
+can easily be operated on.
+
+NETWORK specifies the name of the machine or network that is doing the
+downloading, e.g. 'longhorn' or 'markov'.  Tweet files will be moved into
+the appropriate directory for this network.  This allows for downloading the
+same logical collection on multiple networks and then recombining the results
+when the collection is operated on.
+
+Only tweet files that are at least a day old will be moved.  This ensures that
+files that are still being accumulated into will be left alone.
+
+If NETWORK is omitted, it will be taken from the environment variable
+TWITTER_PULL_NETWORK, if that exists.
+
+If -n or --dry-run is given, don't actually move any files; just show what
+would be done.
+
+If --no-symlinks is given, the symlinks in the permanent-storage corpus
+directory won't be reset.
+
+In order for this to work, the following environment variables must be set:
+
+TWITTER_PULL_DOWNLOAD_DIR: Location where tweet files are downloaded into.
+TWITTER_PULL_DIR: Location where tweet files are moved for permanent storage.
+HERE
+  exit 1
+}
+
+check_dir_exists() {
+if [ -z "$1" -o "$1" = "/" -o "$1" = "//" -o "$1" = "///" -o ! -e "$1" ]; then
+  echo "ERROR: $2 '$1' not found"
+  exit 1
+fi
+if [ ! -d "$1" ]; then
+  echo "ERROR: $2 '$1' exists but is not a directory"
+  exit 1
+fi
+}
+
+DRY_RUN=no
+REDO_SYMLINKS=yes
+while true; do
+  case "$1" in
+    -n | --dry-run ) DRY_RUN=yes; shift ;;
+    --no-symlinks ) REDO_SYMLINKS=no; shift ;;
+    -- ) shift; break ;;
+    * ) break ;;
+  esac
+done
+
+network="$1"
+if [ -z "$network" ]; then
+  network="$TWITTER_PULL_NETWORK"
+fi
+if [ -z "$network" ]; then
+  usage
+fi
+
+check_dir_exists "$TWITTER_PULL_DOWNLOAD_DIR" "twitter-pull download directory"
+check_dir_exists "$TWITTER_PULL_DIR" "twitter-pull storage directory"
+check_dir_exists "$TWITTER_PULL_DIR/originals/$network" "twitter-pull storage directory for network $network"
+
+cd "$TWITTER_PULL_DOWNLOAD_DIR"
+
+if [ "$DRY_RUN" = yes ]; then
+  DRYCMD=echo
+else
+  DRYCMD=
+fi
+
+echo "find . -name '*.bz2' -mtime +0 | xargs $DRYCMD mv -t \"$TWITTER_PULL_DIR/originals/$network\""
+find . -name '*.bz2' -mtime +0 | xargs $DRYCMD mv -t "$TWITTER_PULL_DIR/originals/$network"
+
+if [ "$REDO_SYMLINKS" = yes ]; then
+  echo "$TWITTER_PULL_DIR/finish-corpora"
+  if [ "$DRY_RUN" = no ]; then
+    "$TWITTER_PULL_DIR/finish-corpora"
+  fi
+fi

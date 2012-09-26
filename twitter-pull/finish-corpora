@@ -3,12 +3,30 @@
 # Finish creating extra symlink directories and setting permissions properly
 # after changes in the original files (e.g. adding new ones).
 
-cordir=$SCRATCH/corpora/twitter-pull
+check_dir_exists() {
+if [ -z "$1" -o "$1" = "/" -o "$1" = "//" -o "$1" = "///" -o ! -e "$1" ]; then
+  echo "ERROR: $2 '$1' not found"
+  exit 1
+fi
+if [ ! -d "$1" ]; then
+  echo "ERROR: $2 '$1' exists but is not a directory"
+  exit 1
+fi
+}
+
+cordir=$TWITTER_PULL_DIR
 origsrel=originals
 
-machsources="longhorn markov"
-machs="$machsources all"
+networks="longhorn markov"
+machs="$networks all"
 types="geotagged spritzer all"
+
+check_dir_exists "$TWITTER_PULL_DIR" "twitter-pull storage directory"
+check_dir_exists "$TWITTER_PULL_DIR/$origsrel" "twitter-pull original storage subdirectory"
+
+for network in $networks; do
+  check_dir_exists "$TWITTER_PULL_DIR/$origsrel/$src" "twitter-pull storage directory for network $network"
+done
 
 cd $cordir
 
@@ -78,8 +96,8 @@ done
 # Set permissions
 echo "Setting permissions ..."
 chmod -R go+rX,go-w $cordir
-for src in $machsources; do
-  chmod -R a-w $cordir/$origsrel/$src/*
+for network in $networks; do
+  chmod -R a-w $cordir/$origsrel/$network/*
 done
 
 # All done.
