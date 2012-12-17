@@ -277,6 +277,9 @@ MINIMUM_SUCCESSFUL_RUN_TIME=3600
 # exponential back-off algorithm, doubling the delay each time until
 # we run at last MINIMUM_SUCCESSFUL_RUN_TIME.
 MINIMUM_DELAY_AFTER_ERROR=1
+# Maximum amount to delay after an error, in seconds; exponential backoff
+# won't increase the delay past this.
+MAXIMUM_DELAY_AFTER_ERROR=900
 # Most recent delay, in seconds, after error
 last_delay=$MINIMUM_DELAY_AFTER_ERROR
 # Last start time, in seconds since Epoch
@@ -312,6 +315,9 @@ while true; do
   if [ $run_length -lt $MINIMUM_SUCCESSFUL_RUN_TIME ]; then
     echo "Unsuccessful run: $run_length seconds < $MINIMUM_SUCCESSFUL_RUN_TIME seconds"
     last_delay=`expr $last_delay '*' 2`
+    if [ $last_delay -gt $MAXIMUM_DELAY_AFTER_ERROR ]; then
+      last_delay=$MAXIMUM_DELAY_AFTER_ERROR
+    fi
     echo "Doubling delay to $last_delay seconds"
   else
     echo "Successful run at $run_length seconds, resetting delay to $MINIMUM_DELAY_AFTER_ERROR second(s)"
