@@ -93,9 +93,9 @@ for mach in $machs; do
   done
 done
 
-# Set permissions
+# Set permissions: group readable and executable but not writable, other no access
 echo "Setting permissions ..."
-chmod -R go+rX,go-w $cordir
+chmod -R g+rX,g-w,o-rwx $cordir
 for network in $networks; do
   chmod -R a-w $cordir/$origsrel/$network/*
 done
