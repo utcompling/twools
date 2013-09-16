@@ -23,47 +23,29 @@
 
 # SETUP:
 #
-# (1) Install Node.js unless it's already installed (which it probably
-#     isn't; if it's installed, you should have an 'npm' command
-#     available). Installation is here:
-#       http://nodejs.org/download/
-#     This has Windows, Mac OS and Linux binaries, as well as source
-#     code. Under Linux, it's enough to just untar the binaries in any
-#     directory and then add the .../bin subdirectory to your PATH.
-# (2) Install Chris Brown's Twilight tools for streaming tweets.  See
-#     this web site:
-#       https://github.com/chbrown/twilight
-#     Usually it should be sufficient to just use this command:
-#       npm install -g twilight
-#     Note that 'npm' comes as part of Node.js; see the previous step.
-#     The tools will be installed in the same Node.js bin directory.
-# (3) Create any needed Twitter accounts.
-# (4) Go to https://dev.twitter.com/apps/new and create a developer
-#     application, which is required for programmatic access to tweets.
-#     This will give you OAuth credentials, in the form of four
-#     hexadecimal strings (see below for more info about this). Put
-#     these into a text file, which should look something like this:
-#
-#     -------------------- cut ---------------------
-#     consumer_key consumer_secret access_token access_token_secret
-#     ziurk0An7I3ko9wqqPT5vw VKmTsGrk2JjHDhrlIQBMUaoLvQlkP1MkNSLMmTJT 91505165-VcLOIzA0mkiCSbU XJa4HQKMgqfd7ee63Yp9EG4tVrOUjMcbs7
-#     -------------------- cut ---------------------
-#
-#     The Twilight web site has more info on the file format (see above).
+# (1) Create any needed Twitter accounts.
+# (2) Create a PRIVATE file 'private.passwords' in this directory, listing
+#     the usernames and passwords of all Twitter accounts you want to use,
+#     in USERNAME:PASSWORD format (i.e. one per line, with a colon separating
+#     user name and password).  This file should have permissions 600 or 400.
+# (3) Create a PRIVATE file 'private.usernames' in this directory, listing
+#     the usernames to use for each "tweet area", in USERID:TWEETAREA:USERNAME
+#     format (i.e. one per line, with colons separating the user ID, tweet area
+#     and username, where the user ID is an arbitrary number).
 
 usage()
 {
   cat <<'FOO'
 Usage:
 
-  pull-tweets [-n|--dry-run] [-u ID|--user ID] [--i TIME|--pull-interval TIME] [--filter FILTER] [--name NAME] [--accounts ACCOUNTSFILE] [--no-bzip] DESTDIR
+  pull-tweets [-n|--dry-run] [-u ID|--user ID] [--i TIME|--pull-interval TIME] [--spritzer] [--name NAME] [--area TWEETAREA] [--track TRACKEXPR] [--no-bzip] DESTDIR
 
 This program streams tweets from Twitter using the Streaming API
 (https://dev.twitter.com/docs/streaming-apis).  It runs non-stop until
 terminated, saving the tweets into a file in DESTDIR, normally bzipped
 (although that can be overridden using --no-bzip).  The name of the file
 includes a timestamp as well as an identifying "name" that is usually
-taken from the --name parameter (by default "stream").  The program will
+taken from the --name or --area parameters; see below.  The program will
 stream tweets for only a set period of time (determined by --pull-interval,
 normally one day) before starting a new file, to make it easier to locate
 tweets by time and to avoid creating overly large files.
@@ -72,52 +54,58 @@ If an error happens, this program automatically restarts, using exponential
 backoff.  This type of backoff is mandated by Twitter, and in fact a program
 that does not use it will get locked out until it does start using it.
 
-It is currently necessary to set up OAuth credentials on the Twitter
-web site in order to stream. A particular set of credentials consists of
-four hexademical strings: a public/private pair referring to a particular
-Twitter user, and a public/private pair referring to an "application" set
-up by the user. The idea here is that a given user can allow multiple
-applications to access their account, with different permissions for each
-application. You will need to log into Twitter and create a "developer
-application" using this URL:
+Streaming from Twitter must be done in the context of a particular Twitter
+user.  The user name is usually specified using --user, which specifies an
+ID that is mapped to an actual user name and password using local files,
+which should definitely be unreadable except by the owner (chmod 600 or
+chmod 400).  (An ID is used for privacy, to avoid having the actual user name
+appear in the command line, which may be visible to other users on the
+system.) An alternative mechanism for locating the user exists using the
+value of --area, although this may be removed at some point.  If no
+user name can be located, the program will refuse to run.  See below for more
+discussion of users.
 
-https://dev.twitter.com/apps/new
+In addition, some sort of other restriction on tweets must be given, either
+using --spritzer, --area or --track. (This is mandated by Twitter.)
 
-This will give you the proper OAuth credentials; put them in a text file
-and pass it in using the --accounts parameter. This file should definitely
-be unreadable except by the owner (chmod 600 or chmod 400).  For more
-information, including the format of this file, see
 
-https://github.com/chbrown/twilight
+More details:
 
-(This is the web page of Chris Brown's Twilight application, which is
-used by this application to actually stream the tweets.)
+If -u or --user is given, it specifies a numeric ID of a Twitter user to be
+used. (User ID's are arbitrary numbers, used for privacy, so other users on
+the system don't ever see the actual user names in command-line strings.)
+You must use a Twitter user when requesting data from the streaming API,
+and only one stream at a time can use a given user.  If no user is given,
+it will be taken from TWEETAREA, from pseudo-area "spritzer", or from any
+name given using --name.  Note that the same area or name is used as the
+prefix of the output files.  The mapping from user and tweet areas to stored
+in the file 'private.usernames', with lines of the form
+USERID:TWEETAREA:USERNAME.  This file should be unreadable except by the owner
+(chmod 600).
 
-The --filter parameter specifies which tweets to stream. If omitted,
-streaming happens from the Spritzer, i.e. a small percentage of all
-tweets. Other possibilities are e.g.:
+Once the user name is found, the associated password is located by
+looking in 'private.passwords', with lines of the form USERNAME:PASSWORD.
+This file should *DEFINITELY* be unreadable except by the owner
+(chmod 600).
 
-To retrieve geotagged tweets inside a given bounding box:
+If --spritzer is given, the spritzer will be used to retrieve tweets
+(sample.json); otherwise the normal filter mechanism will be used
+(filter.json).
 
-locations=-18,14,68,44
+If --area is given, tweets are restricted by location.  TWEETAREA is an area
+of the earth containing locations; the bounding box(es) are retrieved from a
+file 'TWEETAREA.locations' in the same dir as this script.
 
-To retrieve tweets containing particular keywords:
-
-track=obama,romney
-
-(This will retrieve tweets containing either "obama" or "romney".
-Matching is case-insensitive.)
-
-In general, the format of "track=foo,bar"is one or more "phrases"
-separated by commas, where each "phrase" is one or more words separated
-by spaces.  A tweet will be returned if any phrase matches; a phrase
-matches if all words are in the tweet, regardless of order and ignoring
-case. NOTE: If you want to include multiple space-separated words in a
-phrase, you *must* URL-encode the spaces as %20.  In fact, in general
-you should URL-encode punctuation, although at least for the symbols
-# and @ (commonly occurring in tweets as hashtags and reply-tos,
-respectively), it appears to work currently whether or not you
-URL-encode them or leave them as-is.  Conversions for common symbols:
+If --track is given, tweets are filtered by the presence of words in the
+stream.  The format is one or more "phrases" separated by commas, where each
+"phrase" is one or more words separated by spaces.  A tweet will be returned
+if any phrase matches; a phrase matches if all words are in the tweet,
+regardless of order and ignoring case. NOTE: If you want to include
+multiple space-separated words in a phrase, you *must* URL-encode the spaces
+as %20.  In fact, in general you should URL-encode punctuation, although
+at least for the symbols # and @ (commonly occurring in tweets as hashtags
+and reply-tos, respectively), it appears to work currently whether or not
+you URL-encode them or leave them as-is.  Conversions for common symbols:
 
 @	%40
 #	%23
@@ -131,7 +119,11 @@ $	%24
 ?	%3F
 
 If -n or --dry-run is given, the script will output exactly what it
-would do, but not do anything.
+would do, but not do anything. (NOTE NOTE NOTE: When doing a dry run, the
+output will include the exact command run by 'curl' for diagnostic purposes,
+including the user name and password.  In other circumstances, the user
+name and password will be censored so that they don't appear in log files
+made of the operation of this script.)
 
 If --no-bzip is given, don't compress output using bzip2.
 
@@ -155,6 +147,8 @@ fi
 
 DIR="`dirname $0`"
 
+STREAM='filter.json'
+
 # This sets CMDOPTS to an empty array.  Capsule summary of bash arrays:
 # 1. foo=(x y z) sets $foo to be an array of items.
 # 2. "${foo[@]}" (quotes necessary) expands to the whole set of items in $foo,
@@ -177,9 +171,11 @@ while true; do
   case "$1" in
     -n | --dry-run ) DRYRUN=yes ; shift ;;
     -i | --pull-interval ) PULL_INTERVAL="$2"; shift 2 ;;
+    --spritzer ) STREAM='sample.json'; shift ;;
+    --area ) TWEETAREA="$2"; CMDOPTS=("${CMDOPTS[@]}" -d "@$DIR/$2.locations"); shift 2 ;;
     --name ) NAME="$2"; shift 2 ;;
-    --filter ) CMDOPTS=("${CMDOPTS[@]}" --filter "$2"); shift 2 ;;
-    -a | --accounts ) CMDOPTS=("${CMDOPTS[@]}" --accounts "$2"); shift 2 ;;
+    -u | --user ) USERID="$2"; shift 2 ;;
+    --track ) CMDOPTS=("${CMDOPTS[@]}" -d "track=$2"); shift 2 ;;
     --no-bzip ) BZIP="cat"; shift ;;
     -* ) usage ;;
     * ) break ;
@@ -206,12 +202,49 @@ time_to_sec() {
   echo $time | perl -ne 'chop; chop; print int($_*'"$factor);"
 }
 
+find_field() {
+  regexp="$1"
+  shift
+  key=$1
+  file=$2
+  keyname=$3
+  valuename=$4
+  wholeline=$5
+  regexp="${regexp}${key}:"
+  howmany=`grep "$regexp" $file | wc -l`
+  if [ "$howmany" -eq 0 ]; then
+    echo "Can't find $valuename for $keyname $key in $file" >&2
+    exit 1
+  fi
+  if [ "$howmany" -gt 1 ]; then
+    echo "Multiple entries for $keyname $key in $file" >&2
+    exit 1
+  fi
+  if [ -n "$wholeline" ]; then
+    grep "$regexp" $file
+  else
+    grep "$regexp" $file | sed "s/^.*://"
+  fi
+}
+
+find_first() {
+  find_field "^" ${1+"$@"}
+}
+
+find_second() {
+  find_field "^[^.]*:" ${1+"$@"}
+}
+
 # Make sure that errors even in calls to `...` cause things to stop,
 # while processing command-line arguments.
 set -e
 
 if [ -n "$NAME" ]; then
   :
+elif [ -n "$TWEETAREA" ]; then
+  NAME="$TWEETAREA"
+elif [ "$STREAM" = "sample.json" ]; then
+  NAME="spritzer"
 else
   NAME="stream"
 fi
@@ -221,6 +254,17 @@ if [ -z "$PULLDIR" ]; then
   echo "Need to specify directory to store tweets in as argument" >&2
   exit 1
 fi
+UNAME=
+if [ -n "$USERID" ]; then
+  UNAME=`find_first $USERID $DIR/private.usernames key area`
+elif [ -n "$NAME" ]; then
+  UNAME=`find_second $NAME $DIR/private.usernames key area`
+fi
+if [ -z "$UNAME" ]; then
+  echo "Can't find user name" >&2
+  exit 1
+fi
+USERPASS=`find_first $UNAME $DIR/private.passwords user password wholeline`
 
 # Go back to normal error-handling, since curl itself may exit 1.
 set +e
@@ -239,9 +283,9 @@ ORIG_PREFIX=`compute_prefix`
 max_time_arg=
 if [ -n "$PULL_INTERVAL" ]; then
   secs=`time_to_sec $PULL_INTERVAL`
-  max_time_arg="--timeout $secs"
+  max_time_arg="--max-time $secs"
 fi
-CURL_CMD="twitter-curl $max_time_arg"
+CURL_CMD="curl --silent --show-error $max_time_arg"
 
 ERROR_FILE="$ORIG_PREFIX.errors"
 
@@ -273,26 +317,23 @@ while true; do
   echo "Sending tweets to $TWEETS_FILE"
   last_start_time=`date +%s`
   echo "Beginning retrieval of tweets for area $NAME at `date` ..."
-  cmdline=($CURL_CMD "${CMDOPTS[@]}")
+  cmdline_nopass=($CURL_CMD "${CMDOPTS[@]}" "https://stream.twitter.com/1/statuses/$STREAM")
+  cmdline=("${cmdline_nopass[@]}" "-u$USERPASS")
+  # Censor the username and password so they don't end up in log files, etc.
+  cmdline_censored=("${cmdline_nopass[@]}" "-u<censored>")
   prev_file_size=0
   if [ -e "$TWEETS_FILE" ]; then
     prev_file_size=`stat --format="%s" "$TWEETS_FILE"`
-  fi
-  if [ -z "$prev_file_size" ]; then
-    prev_file_size=0
   fi
   if [ -n "$DRYRUN" ]; then
     echo "${cmdline[@]} |$BZIP >> $TWEETS_FILE"
     #To test that spaces are being properly passed in
     #for x in "${cmdline[@]}"; do echo "Argument: $x"; done
   else
-    echo "${cmdline[@]} |$BZIP >> $TWEETS_FILE"
+    echo "${cmdline_censored[@]} |$BZIP >> $TWEETS_FILE"
     "${cmdline[@]}" |$BZIP >> $TWEETS_FILE
   fi
   new_file_size=`stat --format="%s" "$TWEETS_FILE"`
-  if [ -z "$new_file_size" ]; then
-    new_file_size=0
-  fi
   new_data_gen=`expr $new_file_size - $prev_file_size`
   echo "Ending retrieval of tweets for area $NAME at `date` ..."
   last_end_time=`date +%s`
