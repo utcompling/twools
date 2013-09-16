@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
 
+##################################################################################
+#   pull-tweets
+#
+#   Copyright (C) 2011, 2012 Ben Wing, The University of Texas at Austin
+# 
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+# 
+#       http://www.apache.org/licenses/LICENSE-2.0
+# 
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+##################################################################################
+
 # We need to use bash so that we can use bash's array features to properly
 # handle spaces inside of arguments.
 
@@ -271,8 +289,10 @@ CURL_CMD="curl --silent --show-error $max_time_arg"
 
 ERROR_FILE="$ORIG_PREFIX.errors"
 
+# Minimum amount of data to stream to be considered "successful"
+MINIMUM_SUCCESSFUL_DATA_GEN=1000
 # Minimum successful run time, in seconds
-MINIMUM_SUCCESSFUL_RUN_TIME=3600
+MINIMUM_SUCCESSFUL_RUN_TIME=300
 # Minimum amount to delay after an error, in seconds; we implement an
 # exponential back-off algorithm, doubling the delay each time until
 # we run at last MINIMUM_SUCCESSFUL_RUN_TIME.
@@ -295,12 +315,16 @@ while true; do
     TWEETS_FILE="$PREFIX.bz2"
   fi
   echo "Sending tweets to $TWEETS_FILE"
-  echo "Beginning retrieval of tweets for area $NAME at `date` ..."
   last_start_time=`date +%s`
+  echo "Beginning retrieval of tweets for area $NAME at `date` ..."
   cmdline_nopass=($CURL_CMD "${CMDOPTS[@]}" "https://stream.twitter.com/1/statuses/$STREAM")
   cmdline=("${cmdline_nopass[@]}" "-u$USERPASS")
   # Censor the username and password so they don't end up in log files, etc.
   cmdline_censored=("${cmdline_nopass[@]}" "-u<censored>")
+  prev_file_size=0
+  if [ -e "$TWEETS_FILE" ]; then
+    prev_file_size=`stat --format="%s" "$TWEETS_FILE"`
+  fi
   if [ -n "$DRYRUN" ]; then
     echo "${cmdline[@]} |$BZIP >> $TWEETS_FILE"
     #To test that spaces are being properly passed in
@@ -309,19 +333,33 @@ while true; do
     echo "${cmdline_censored[@]} |$BZIP >> $TWEETS_FILE"
     "${cmdline[@]}" |$BZIP >> $TWEETS_FILE
   fi
+  new_file_size=`stat --format="%s" "$TWEETS_FILE"`
+  new_data_gen=`expr $new_file_size - $prev_file_size`
   echo "Ending retrieval of tweets for area $NAME at `date` ..."
   last_end_time=`date +%s`
   run_length=`expr $last_end_time - $last_start_time`
-  if [ $run_length -lt $MINIMUM_SUCCESSFUL_RUN_TIME ]; then
-    echo "Unsuccessful run: $run_length seconds < $MINIMUM_SUCCESSFUL_RUN_TIME seconds"
+  succ=false
+  if [ $new_data_gen -ge $MINIMUM_SUCCESSFUL_DATA_GEN ]; then
+    echo "Successful run with $new_data_gen bytes of data generated"
+    succ=true
+  else
+    echo "Oops: $new_data_gen bytes < $MINIMUM_SUCCESSFUL_DATA_GEN bytes"
+    if [ $run_length -ge $MINIMUM_SUCCESSFUL_RUN_TIME ]; then
+      echo "Successful run at $run_length seconds"
+      succ=true
+    else
+      echo "Oops: $run_length seconds < $MINIMUM_SUCCESSFUL_RUN_TIME seconds"
+    fi
+  fi
+  if [ "$succ" = "false" ]; then
     last_delay=`expr $last_delay '*' 2`
     if [ $last_delay -gt $MAXIMUM_DELAY_AFTER_ERROR ]; then
       last_delay=$MAXIMUM_DELAY_AFTER_ERROR
     fi
-    echo "Doubling delay to $last_delay seconds"
+    echo "Unsuccessful run; doubling delay to $last_delay seconds"
   else
-    echo "Successful run at $run_length seconds, resetting delay to $MINIMUM_DELAY_AFTER_ERROR second(s)"
-    last_delay=1
+    echo "Successful: Resetting delay to $MINIMUM_DELAY_AFTER_ERROR second(s)"
+    last_delay=$MINIMUM_DELAY_AFTER_ERROR
   fi
   sleep $last_delay 
   echo "Trying again after having delayed $last_delay seconds ..."
